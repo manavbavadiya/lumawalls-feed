@@ -6,6 +6,9 @@ Reload, so new wallpapers appear without an app update.
 * `feed.json` - every wallpaper: kind, category, title, Pro flag, date added, and for photos and videos the
   Wikimedia Commons file with its **author, licence and source page**.
 * `thumbs/`, `vthumbs/`, `covers/` - small preview crops (WebP) of those photos and videos.
+* `hits` on each photo/video wallpaper - how often the file was viewed on Wikimedia in the last day / 7 days /
+  30 days / 365 days (Wikimedia Analytics mediarequests API), refreshed daily by `.github/workflows/stats.yml`.
+  The app's Today's Hit, Weekly Hit, Monthly Hit and Most Viewed sorts use them.
 
 ## Licences
 

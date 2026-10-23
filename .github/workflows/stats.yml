@@ -1,0 +1,22 @@
+name: Daily popularity numbers
+on:
+  schedule:
+    - cron: "30 2 * * *"   # every day 02:30 UTC, after Wikimedia publishes the previous day
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  stats:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python3 tools/update_stats.py
+      - run: |
+          git config user.name "lumawalls-stats"
+          git config user.email "actions@users.noreply.github.com"
+          git add feed.json
+          git diff --cached --quiet || (git commit -m "Daily popularity numbers" && git push)
