@@ -1,8 +1,9 @@
 // Live Wallpapers 4K - admin panel. Plain ES modules, no build step; served from the wallpaper site (GitHub Pages)
 // at /admin/. Reads feed.json + admin.json, edits admin.json, publishes through the GitHub API.
-import { GitHub } from "./github.js";
-import { Model, KINDS, KIND_LABEL, TAGS, DEFAULT_CONFIG } from "./model.js";
-import { processPhoto, processVideo, posterFromUrl, MAX_VIDEO_MB } from "./media.js";
+import { GitHub } from "./github.js?v=2bb188b44c";
+import { Model, KINDS, KIND_LABEL, TAGS, DEFAULT_CONFIG } from "./model.js?v=2bb188b44c";
+import { processPhoto, processVideo, posterFromUrl, MAX_VIDEO_MB } from "./media.js?v=2bb188b44c";
+import { LOGIN_FILE, lock, unlock, fetchLogin } from "./login.js?v=2bb188b44c";
 
 const STORE_KEY = "lw4k_admin";
 const DEFAULT_REPO = "manavbavadiya/lumawalls-feed";
@@ -19,6 +20,8 @@ const state = {
   shown: PAGE, selected: new Set(),
   buyers: undefined, buyersError: null,
   upload: null,
+  login: null, // the site's encrypted ID + password sign-in (admin-login.json), null = not set up
+  tokenForm: false, // show the GitHub-token form even though ID + password sign-in exists
 };
 
 // ---- tiny DOM helpers ---------------------------------------------------------------------------------------
@@ -88,6 +91,7 @@ const store = {
 // ---- start / sign in ---------------------------------------------------------------------------------------
 
 async function start() {
+  state.login = await fetchLogin(SITE);
   if (MOCK) { state.readOnly = false; state.user = "local test"; return loadData(); }
   const saved = store.load();
   if (saved.repo) state.repo = saved.repo;
@@ -134,6 +138,7 @@ async function loadData() {
 }
 
 function renderLogin(error) {
+  if (state.login && !state.tokenForm) return renderPasswordLogin(error);
   const saved = store.load();
   const token = h("input", { type: "password", placeholder: "github_pat_…", autocomplete: "off", value: "" });
   const remember = h("input", { type: "checkbox", checked: !!saved.remember });
@@ -160,18 +165,59 @@ function renderLogin(error) {
     msg,
     h("div", { class: "row" }, go, h("button", { class: "btn ghost", type: "button", onclick: () => { state.readOnly = true; loadData(); } }, "View read-only")),
   );
-  document.getElementById("app").replaceChildren(h("div", { class: "login" }, h("div", { class: "card" },
-    h("div", { class: "brand" }, h("img", { src: "icon.png", alt: "" }), h("div", {}, h("b", {}, "Live Wallpapers 4K"), h("span", {}, "Admin panel"))),
-    form,
+  loginCard(form,
+    state.login ? h("p", { class: "hint", style: { marginTop: "14px" } },
+      h("a", { href: "#", onclick: (e) => { e.preventDefault(); state.tokenForm = false; renderLogin(); } }, "Sign in with ID and password")) : null,
     h("p", { class: "hint", style: { marginTop: "18px" } },
       "Create a token at ", h("a", { href: "https://github.com/settings/personal-access-tokens/new", target: "_blank", rel: "noopener" }, "GitHub › Fine-grained tokens"),
       ": Repository access → only ", h("b", {}, "lumawalls-feed"), " and ", h("b", {}, "lumawalls-admin-data"),
-      "; Permissions → Contents: Read and write. The token stays in this browser and is sent only to GitHub."),
-  )));
+      "; Permissions → Contents: Read and write. The token stays in this browser and is sent only to GitHub.",
+      state.login ? null : h("span", {}, " After signing in, set an admin ID and password on the Dashboard to sign in without the token next time.")));
+}
+
+function loginCard(...kids) {
+  document.getElementById("app").replaceChildren(h("div", { class: "login" }, h("div", { class: "card" },
+    h("div", { class: "brand" }, h("img", { src: "icon.png", alt: "" }), h("div", {}, h("b", {}, "Live Wallpapers 4K"), h("span", {}, "Admin panel"))),
+    ...kids)));
+}
+
+function renderPasswordLogin(error) {
+  const saved = store.load();
+  const id = h("input", { type: "text", autocomplete: "username", autocapitalize: "off", spellcheck: "false", value: saved.id || "" });
+  const password = h("input", { type: "password", autocomplete: "current-password", value: "" });
+  const remember = h("input", { type: "checkbox", checked: !!saved.remember });
+  const msg = h("div", { class: "hint", style: { color: "#ffb4ad", minHeight: "20px" } }, error || "");
+  const go = h("button", { class: "btn primary", type: "submit" }, "Sign in");
+  const form = h("form", {
+    onsubmit: async (ev) => {
+      ev.preventDefault();
+      go.disabled = true; msg.textContent = "Checking…"; msg.style.color = "";
+      try {
+        const p = await unlock(state.login, id.value, password.value);
+        if (p.repo) state.repo = p.repo;
+        if (p.dataRepo) state.dataRepo = p.dataRepo;
+        await signIn(p.token).catch((e) => {
+          throw new Error(e.message + " Sign in once with a new GitHub token, then set the ID and password again on the Dashboard.");
+        });
+        store.save({ token: p.token, repo: state.repo, dataRepo: state.dataRepo, id: id.value.trim(), remember: remember.checked }, remember.checked);
+      } catch (e) { msg.style.color = "#ffb4ad"; msg.textContent = e.message; go.disabled = false; }
+    },
+  },
+    h("label", { class: "field" }, h("span", {}, "Admin ID"), id),
+    h("label", { class: "field" }, h("span", {}, "Password"), password),
+    h("label", { class: "check", style: { marginBottom: "14px" } }, remember, "Remember on this browser"),
+    msg,
+    h("div", { class: "row" }, go, h("button", { class: "btn ghost", type: "button", onclick: () => { state.readOnly = true; loadData(); } }, "View read-only")));
+  loginCard(form, h("p", { class: "hint", style: { marginTop: "18px" } },
+    h("a", { href: "#", onclick: (e) => { e.preventDefault(); state.tokenForm = true; renderLogin(); } }, "Use a GitHub token instead")));
+  (id.value ? password : id).focus();
 }
 
 function signOut() {
+  const id = store.load().id;
   store.clear();
+  if (id) store.save({ id }, false);
+  state.tokenForm = false;
   state.gh = null; state.model = null; state.buyers = undefined;
   renderLogin();
 }
@@ -188,7 +234,11 @@ const PAGES = [
 ];
 
 let topBar;
+let renderedPage = null;
 function renderApp() {
+  // Stay where you were after an edit; only a new page starts at the top.
+  const keepScroll = renderedPage === state.page ? window.scrollY : 0;
+  renderedPage = state.page;
   const side = h("nav", { class: "side" },
     h("div", { class: "brand" }, h("img", { src: "icon.png", alt: "" }), h("div", {}, h("b", {}, "Live Wallpapers 4K"), h("span", {}, "Admin"))),
     PAGES.map(([id, label, ic]) => h("button", { class: "nav" + (state.page === id ? " on" : ""), onclick: () => go(id) }, icon(ic), label)),
@@ -202,7 +252,7 @@ function renderApp() {
   updateTop();
   const page = { dashboard: pageDashboard, categories: pageCategories, wallpapers: pageWallpapers, upload: pageUpload, premium: pagePremium, buyers: pageBuyers }[state.page];
   page(content);
-  window.scrollTo(0, 0);
+  window.scrollTo(0, keepScroll);
 }
 
 function go(page, filters) {
@@ -311,6 +361,7 @@ function pageDashboard(root) {
         h("p", {}, "Ads: ", h("b", {}, m.admin.config.adsEnabled ? "on" : "off"),
           m.admin.config.adsEnabled ? ` · full-screen ad every ${m.admin.config.interstitialEveryPreviews || "–"} wallpapers opened, at most one per ${m.admin.config.interstitialMinGapSec}s` : ""),
         h("div", { class: "row" }, h("button", { class: "btn", onclick: () => go("premium") }, "Edit"), h("button", { class: "btn", onclick: () => go("buyers") }, "Buyers")))),
+    signInCard(),
     h("div", { class: "card" }, h("h2", {}, "Quick actions"),
       h("div", { class: "row" },
         h("button", { class: "btn", onclick: () => go("upload") }, "Upload a wallpaper"),
@@ -318,6 +369,69 @@ function pageDashboard(root) {
         h("button", { class: "btn", onclick: () => go("wallpapers", { pro: "pro", kind: "", category: "", status: "", q: "" }) }, "See Pro wallpapers"),
         h("button", { class: "btn", onclick: () => go("wallpapers", { status: "hidden", kind: "", category: "", pro: "", q: "" }) }, "See hidden"))),
   );
+}
+
+function signInCard() {
+  const canSet = !!state.gh || MOCK;
+  return h("div", { class: "card" }, h("h2", {}, "Admin sign-in"),
+    h("p", {}, "ID and password sign-in: ", h("b", {}, state.login ? "on" : "not set up")),
+    h("p", { class: "hint" }, canSet
+      ? "Sign in with an admin ID and password instead of the GitHub token, on any computer or phone. The token is saved encrypted with them on the wallpaper site, so pick a long password nobody can guess."
+      : "Sign in with the GitHub token to set or change the ID and password."),
+    canSet ? h("div", { class: "row" },
+      h("button", { class: "btn", onclick: setLoginDialog }, state.login ? "Change ID or password" : "Set ID and password"),
+      state.login ? h("button", { class: "btn danger", onclick: removeLogin }, "Turn off") : null) : null,
+    // The sidebar's Sign out is hidden on phones; this one is always there.
+    state.gh || state.readOnly ? h("div", { class: "row", style: { marginTop: "10px" } },
+      h("button", { class: "btn ghost", onclick: signOut }, state.readOnly ? "Sign in" : "Sign out")) : null);
+}
+
+/** Commit (or, in test mode, only prepare) the login file. */
+async function saveLoginFile(text, message) {
+  if (MOCK) { window.__lastLogin = text; return; }
+  await state.gh.commit(state.repo, state.branch, message, [text == null ? { path: LOGIN_FILE, delete: true } : { path: LOGIN_FILE, text }]);
+}
+
+function setLoginDialog() {
+  const id = h("input", { type: "text", autocomplete: "username", autocapitalize: "off", spellcheck: "false", value: store.load().id || "" });
+  const pw = h("input", { type: "password", autocomplete: "new-password" });
+  const pw2 = h("input", { type: "password", autocomplete: "new-password" });
+  const err = h("div", { class: "hint", style: { color: "#ffb4ad", minHeight: "18px" } });
+  const save = h("button", { class: "btn primary", type: "submit" }, "Save");
+  const w = modal(h("h2", {}, "Admin ID and password"),
+    h("form", {
+      onsubmit: async (ev) => {
+        ev.preventDefault();
+        err.textContent = "";
+        if (id.value.trim().length < 3) { err.textContent = "The ID needs at least 3 characters."; return; }
+        if (pw.value.length < 8) { err.textContent = "The password needs at least 8 characters."; return; }
+        if (pw.value !== pw2.value) { err.textContent = "The two passwords are different."; return; }
+        save.disabled = true; err.style.color = ""; err.textContent = "Saving…";
+        try {
+          const text = await lock(id.value, pw.value, { token: state.gh ? state.gh.token : "mock-token", repo: state.repo, dataRepo: state.dataRepo });
+          await saveLoginFile(text, "Admin: sign-in ID and password updated");
+          state.login = JSON.parse(text);
+          const saved = store.load();
+          if (saved.token) store.save({ ...saved, id: id.value.trim() }, !!saved.remember);
+          w.remove(); toast("Saved. Sign in with this ID and password from now on (the website takes about a minute to update)."); renderApp();
+        } catch (e) { err.style.color = "#ffb4ad"; err.textContent = e.message; save.disabled = false; }
+      },
+    },
+      h("label", { class: "field" }, h("span", {}, "Admin ID"), id),
+      h("label", { class: "field" }, h("span", {}, "New password (8 or more characters)"), pw),
+      h("label", { class: "field" }, h("span", {}, "Repeat the password"), pw2),
+      h("p", { class: "hint" }, "Anyone who knows this ID and password can change the app's wallpapers, prices and ads. If the GitHub token expires, sign in with a new token and save the ID and password again."),
+      err,
+      h("div", { class: "row end" }, h("button", { class: "btn", type: "button", onclick: () => w.remove() }, "Cancel"), save)));
+  id.focus();
+}
+
+async function removeLogin() {
+  if (!confirm("Turn off ID and password sign-in? You will need the GitHub token to sign in.")) return;
+  try {
+    await saveLoginFile(null, "Admin: ID and password sign-in turned off");
+    state.login = null; toast("ID and password sign-in turned off"); renderApp();
+  } catch (e) { toast(e.message, true); }
 }
 
 // ---- categories ---------------------------------------------------------------------------------------------
@@ -332,7 +446,7 @@ function coverStyle(row) {
 function pageCategories(root) {
   const m = state.model;
   const rows = m.categoryRows();
-  const add = h("button", { class: "btn primary", onclick: addCategoryDialog }, "Add category");
+  const add = h("button", { class: "btn primary", onclick: () => addCategoryDialog() }, "Add category");
   root.append(h("div", { class: "row" }, h("p", { class: "hint grow" },
     "Rename, hide or reorder categories, and make every wallpaper in a category Pro or free. A single wallpaper's own setting (Wallpapers page) always wins."), add));
   const groups = [["LIVE", "Live categories"], ["STATIC", "4K Static categories"], ["GLITTER", "Glitter & Live Clock"]];
@@ -374,9 +488,10 @@ function categoryRow(r, list, i) {
   );
 }
 
-function addCategoryDialog() {
+/** Add a LIVE or STATIC category. `fixedKind` locks the type (when called from a picker), `onAdded(key)` runs after. */
+function addCategoryDialog(fixedKind, onAdded) {
   const m = state.model;
-  const kind = h("select", {}, h("option", { value: "STATIC" }, "4K Static"), h("option", { value: "LIVE" }, "Live"));
+  const kind = h("select", { disabled: !!fixedKind }, h("option", { value: "STATIC", selected: fixedKind === "STATIC" }, "4K Static"), h("option", { value: "LIVE", selected: fixedKind === "LIVE" }, "Live"));
   const name = h("input", { type: "text", placeholder: "e.g. Cars" });
   const err = h("div", { class: "hint", style: { color: "#ffb4ad" } });
   const w = modal(h("h2", {}, "Add category"),
@@ -388,9 +503,28 @@ function addCategoryDialog() {
       h("button", { class: "btn primary", onclick: () => {
         const n = name.value.trim(); const key = slug(n);
         if (!key) { err.textContent = "Enter a name"; return; }
-        try { m.addCategory(kind.value, key, n); changed(); w.remove(); renderApp(); } catch (e) { err.textContent = e.message; }
+        try { m.addCategory(kind.value, key, n); } catch (e) { err.textContent = e.message; return; }
+        changed(); w.remove();
+        if (onAdded) onAdded(key); else renderApp();
       } }, "Add")));
   name.focus();
+}
+
+const NEW_CATEGORY = "__new__";
+
+/** Category <select> for one kind; for Live / 4K Static it ends with "+ New category…", which opens the add dialog
+ *  and picks the new category. `first` is an optional leading placeholder option. */
+function categorySelect(kind, value, onPick, first) {
+  const canAdd = kind === "LIVE" || kind === "STATIC";
+  const sel = h("select", { onchange: () => {
+    if (sel.value !== NEW_CATEGORY) { onPick(sel.value); return; }
+    sel.value = value ?? "";
+    addCategoryDialog(kind, (key) => { toast("Category added"); onPick(key); });
+  } },
+    first ? h("option", { value: "" }, first) : null,
+    state.model.categoriesFor(kind).map((c) => h("option", { value: c.key, selected: c.key === value }, c.name)),
+    canAdd ? h("option", { value: NEW_CATEGORY }, "+ New category…") : null);
+  return sel;
 }
 
 // ---- wallpapers ---------------------------------------------------------------------------------------------
@@ -512,8 +646,7 @@ function renderBulk(list) {
   if (!n) return bar.replaceChildren();
   const apply = (patch, label) => { state.selected.forEach((id) => m.editWall(id, patch)); changed(); toast(`${label}: ${n} wallpaper${n === 1 ? "" : "s"}`); renderGrid(); };
   const kinds = new Set([...state.selected].map((id) => m.baseById.get(id).kind));
-  const moveSel = kinds.size === 1 ? h("select", { onchange: (e) => { if (e.target.value) apply({ category: e.target.value }, "Moved"); } },
-    h("option", { value: "" }, "Move to…"), m.categoriesFor([...kinds][0]).map((c) => h("option", { value: c.key }, c.name))) : null;
+  const moveSel = kinds.size === 1 ? categorySelect([...kinds][0], "", (key) => { if (key) apply({ category: key }, "Moved"); }, "Move to…") : null;
   bar.replaceChildren(h("div", { class: "bulk" },
     h("b", {}, `${n} selected`),
     h("button", { class: "btn small pro", onclick: () => apply({ pro: true }, "Made Pro") }, "Make Pro"),
@@ -529,6 +662,8 @@ function renderBulk(list) {
 
 function openWall(id) {
   const m = state.model;
+  // The editor opens from the Wallpapers grid and from the Upload page's "Waiting to be published" list.
+  const refresh = () => (document.getElementById("grid") ? renderGrid() : renderApp());
   const draw = () => {
     const v = m.view(m.baseById.get(id));
     const w = v.wall;
@@ -538,10 +673,8 @@ function openWall(id) {
     const photo = w.photo && m.photos.get(w.photo);
     const video = w.video && m.videos.get(w.video);
     const credit = photo || video;
-    const title = h("input", { type: "text", value: w.title, onchange: () => { m.editWall(id, { title: title.value.trim() }); changed(); draw(); renderGrid(); } });
-    const catOptions = m.categoriesFor(w.kind);
-    const cat = h("select", { onchange: () => { m.editWall(id, { category: cat.value }); changed(); draw(); renderGrid(); } },
-      catOptions.map((c) => h("option", { value: c.key, selected: c.key === w.category }, c.name)));
+    const title = h("input", { type: "text", value: w.title, onchange: () => { m.editWall(id, { title: title.value.trim() }); changed(); draw(); refresh(); } });
+    const cat = categorySelect(w.kind, w.category, (key) => { m.editWall(id, { category: key }); changed(); draw(); refresh(); });
     const proValue = e.pro === true ? "pro" : e.pro === false ? "free" : "default";
     const inherited = v.proFrom === "category" ? `category says ${w.pro ? "Pro" : "free"}` : `published as ${base.pro ? "Pro" : "free"}`;
     const panel = h("div", { class: "drawer", onclick: (ev) => ev.stopPropagation() },
@@ -558,25 +691,25 @@ function openWall(id) {
       h("label", { class: "field" }, h("span", {}, "Category"), cat),
       h("label", { class: "field" }, h("span", {}, `Pro (default: ${inherited})`),
         seg([["default", "Default"], ["pro", "Pro", "pro"], ["free", "Free", "free"]], proValue, (val) => {
-          m.editWall(id, { pro: val === "pro" ? true : val === "free" ? false : null }); changed(); draw(); renderGrid();
+          m.editWall(id, { pro: val === "pro" ? true : val === "free" ? false : null }); changed(); draw(); refresh();
         })),
       h("div", { class: "field" }, h("span", { class: "hint" }, "Lists"),
         h("div", { class: "row" }, TAGS.map(([tag, label]) => h("label", { class: "check" },
           h("input", { type: "checkbox", checked: (w.tags || []).includes(tag), onchange: (ev) => {
             const tags = new Set(w.tags || []); if (ev.target.checked) tags.add(tag); else tags.delete(tag);
-            m.editWall(id, { tags: [...tags] }); changed(); draw(); renderGrid();
+            m.editWall(id, { tags: [...tags] }); changed(); draw(); refresh();
           } }), label)))),
       h("div", { class: "row", style: { margin: "6px 0 16px" } },
-        h("label", { class: "check" }, h("input", { type: "checkbox", checked: !!e.hidden, onchange: (ev) => { m.editWall(id, { hidden: ev.target.checked }); changed(); draw(); renderGrid(); } }), "Hidden"),
-        h("label", { class: "check" }, h("input", { type: "checkbox", checked: !!e.pinned, onchange: (ev) => { m.editWall(id, { pinned: ev.target.checked }); changed(); draw(); renderGrid(); } }), "Pinned to the top of Recommended")),
+        h("label", { class: "check" }, h("input", { type: "checkbox", checked: !!e.hidden, onchange: (ev) => { m.editWall(id, { hidden: ev.target.checked }); changed(); draw(); refresh(); } }), "Hidden"),
+        h("label", { class: "check" }, h("input", { type: "checkbox", checked: !!e.pinned, onchange: (ev) => { m.editWall(id, { pinned: ev.target.checked }); changed(); draw(); refresh(); } }), "Pinned to the top of Recommended")),
       (w.kind === "LIVE" || w.kind === "STATIC") ? h("button", { class: "btn small", onclick: () => {
         m.editCategory(w.kind, w.category, { cover: w.id }); changed(); toast(`Cover of ${w.category} set`);
       } }, "Use as category cover") : null,
       h("div", { class: "row", style: { marginTop: "20px" } },
-        v.edited ? h("button", { class: "btn", onclick: () => { m.resetWall(id); changed(); draw(); renderGrid(); } }, "Undo my changes") : null,
+        v.edited ? h("button", { class: "btn", onclick: () => { m.resetWall(id); changed(); draw(); refresh(); } }, "Undo my changes") : null,
         v.uploaded ? h("button", { class: "btn danger", onclick: () => {
           if (!confirm("Delete this uploaded wallpaper? Its files are removed on the next publish.")) return;
-          m.deleteUpload(id); changed(); scrim.remove(); renderGrid();
+          m.deleteUpload(id); changed(); scrim.remove(); refresh();
         } }, "Delete upload") : null));
     scrim.replaceChildren(panel);
   };
@@ -637,7 +770,7 @@ function pageUpload(root) {
     h("div", {},
       h("label", { class: "field" }, h("span", {}, "Title"), h("input", { type: "text", value: u.title, oninput: (e) => { u.title = e.target.value; } })),
       h("label", { class: "field" }, h("span", {}, "Category"),
-        h("select", { onchange: (e) => { u.category = e.target.value; } }, cats.map((c) => h("option", { value: c.key, selected: c.key === u.category }, c.name)))),
+        categorySelect(kindOf[u.type], u.category, (key) => { const added = !cats.some((c) => c.key === key); u.category = key; if (added) rerender(); })),
       h("label", { class: "check" }, h("input", { type: "checkbox", checked: u.pro, onchange: (e) => { u.pro = e.target.checked; } }), "Pro wallpaper")),
     h("div", {},
       h("label", { class: "field" }, h("span", {}, "Author (shown in the app)"), h("input", { type: "text", value: u.author, oninput: (e) => { u.author = e.target.value; } })),
