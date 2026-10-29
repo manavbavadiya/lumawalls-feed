@@ -1,9 +1,9 @@
 // Live Wallpapers 4K - admin panel. Plain ES modules, no build step; served from the wallpaper site (GitHub Pages)
 // at /admin/. Reads feed.json + admin.json, edits admin.json, publishes through the GitHub API.
-import { GitHub } from "./github.js?v=2bb188b44c";
-import { Model, KINDS, KIND_LABEL, TAGS, DEFAULT_CONFIG } from "./model.js?v=2bb188b44c";
-import { processPhoto, processVideo, posterFromUrl, MAX_VIDEO_MB } from "./media.js?v=2bb188b44c";
-import { LOGIN_FILE, lock, unlock, fetchLogin } from "./login.js?v=2bb188b44c";
+import { GitHub } from "./github.js?v=56e5f3f61b";
+import { Model, KINDS, KIND_LABEL, TAGS, DEFAULT_CONFIG } from "./model.js?v=56e5f3f61b";
+import { processPhoto, processVideo, posterFromUrl, MAX_VIDEO_MB } from "./media.js?v=56e5f3f61b";
+import { LOGIN_FILE, lock, unlock, fetchLogin } from "./login.js?v=56e5f3f61b";
 
 const STORE_KEY = "lw4k_admin";
 const DEFAULT_REPO = "manavbavadiya/lumawalls-feed";
@@ -52,6 +52,8 @@ const ICONS = {
   up: "M5 20h14v-2H5zm7-16l-6 6h4v6h4v-6h4z",
   crown: "M3 18h18v2.5H3zm.2-1.5L2 6.5l5.6 4.3L12 3.5l4.4 7.3L22 6.5l-1.2 10z",
   buyers: "M16 11c1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 3-1.34 3-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5C15 14.17 10.33 13 8 13zm8 0c-.29 0-.62.02-.97.05C16.19 13.89 17 15.02 17 16.5V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z",
+  eye: "M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z",
+  eyeOff: "M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z",
   out: "M10 17l1.4-1.4L8.8 13H20v-2H8.8l2.6-2.6L10 7l-5 5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4z",
 };
 function icon(name) {
@@ -68,6 +70,20 @@ function toast(msg, err = false) {
   const t = h("div", { class: "toast" + (err ? " err" : "") }, msg);
   document.getElementById("toasts").append(t);
   setTimeout(() => t.remove(), err ? 7000 : 3500);
+}
+
+/** A password input with an eye button that shows / hides what was typed. */
+function withEye(input) {
+  const eye = h("button", { type: "button", class: "eye", "aria-label": "Show password", title: "Show password" }, icon("eye"));
+  eye.onclick = () => {
+    const show = input.type === "password";
+    input.type = show ? "text" : "password";
+    eye.replaceChildren(icon(show ? "eyeOff" : "eye"));
+    const label = show ? "Hide password" : "Show password";
+    eye.setAttribute("aria-label", label); eye.title = label;
+    input.focus();
+  };
+  return h("div", { class: "pw" }, input, eye);
 }
 
 function seg(options, value, onPick) {
@@ -157,7 +173,7 @@ function renderLogin(error) {
       } catch (e) { msg.textContent = e.message; go.disabled = false; }
     },
   },
-    h("label", { class: "field" }, h("span", {}, "GitHub token"), token),
+    h("label", { class: "field" }, h("span", {}, "GitHub token"), withEye(token)),
     h("label", { class: "check", style: { marginBottom: "14px" } }, remember, "Remember on this browser"),
     h("details", {}, h("summary", {}, "Repositories"),
       h("label", { class: "field" }, h("span", {}, "Wallpaper site (public)"), repo),
@@ -204,7 +220,7 @@ function renderPasswordLogin(error) {
     },
   },
     h("label", { class: "field" }, h("span", {}, "Admin ID"), id),
-    h("label", { class: "field" }, h("span", {}, "Password"), password),
+    h("label", { class: "field" }, h("span", {}, "Password"), withEye(password)),
     h("label", { class: "check", style: { marginBottom: "14px" } }, remember, "Remember on this browser"),
     msg,
     h("div", { class: "row" }, go, h("button", { class: "btn ghost", type: "button", onclick: () => { state.readOnly = true; loadData(); } }, "View read-only")));
@@ -418,8 +434,8 @@ function setLoginDialog() {
       },
     },
       h("label", { class: "field" }, h("span", {}, "Admin ID"), id),
-      h("label", { class: "field" }, h("span", {}, "New password (8 or more characters)"), pw),
-      h("label", { class: "field" }, h("span", {}, "Repeat the password"), pw2),
+      h("label", { class: "field" }, h("span", {}, "New password (8 or more characters)"), withEye(pw)),
+      h("label", { class: "field" }, h("span", {}, "Repeat the password"), withEye(pw2)),
       h("p", { class: "hint" }, "Anyone who knows this ID and password can change the app's wallpapers, prices and ads. If the GitHub token expires, sign in with a new token and save the ID and password again."),
       err,
       h("div", { class: "row end" }, h("button", { class: "btn", type: "button", onclick: () => w.remove() }, "Cancel"), save)));

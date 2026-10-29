@@ -61,6 +61,12 @@ input[type=text], input[type=password], input[type=number], input[type=url], sel
   background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; width: 100%; outline: none;
 }
 input:focus, select:focus, textarea:focus { border-color: var(--blue); }
+.pw { position: relative; }
+.pw input { width: 100%; padding-right: 46px; }
+.pw .eye { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 36px; height: 36px; display: grid; place-items: center;
+  background: none; border: 0; border-radius: 8px; color: var(--soft); cursor: pointer; }
+.pw .eye:hover, .pw .eye:focus-visible { color: var(--ink); background: var(--raised); }
+.pw .eye svg { width: 20px; height: 20px; }
 label.field { display: block; margin-bottom: 14px; }
 label.field > span { display: block; font-size: 13px; color: var(--soft); margin-bottom: 6px; }
 .hint { font-size: 13px; color: var(--soft); }
