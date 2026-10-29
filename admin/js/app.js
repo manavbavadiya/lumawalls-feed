@@ -1,9 +1,9 @@
 // Live Wallpapers 4K - admin panel. Plain ES modules, no build step; served from the wallpaper site (GitHub Pages)
 // at /admin/. Reads feed.json + admin.json, edits admin.json, publishes through the GitHub API.
-import { GitHub } from "./github.js?v=422e416d6b";
-import { Model, KINDS, KIND_LABEL, TAGS, DEFAULT_CONFIG } from "./model.js?v=422e416d6b";
-import { processPhoto, processVideo, posterFromUrl, MAX_VIDEO_MB } from "./media.js?v=422e416d6b";
-import { LOGIN_FILE, lock, unlock, fetchLogin } from "./login.js?v=422e416d6b";
+import { GitHub } from "./github.js?v=0175c2b0f4";
+import { Model, KINDS, KIND_LABEL, TAGS, DEFAULT_CONFIG } from "./model.js?v=0175c2b0f4";
+import { processPhoto, processVideo, posterFromUrl, MAX_VIDEO_MB } from "./media.js?v=0175c2b0f4";
+import { LOGIN_FILE, lock, unlock, fetchLogin } from "./login.js?v=0175c2b0f4";
 
 const STORE_KEY = "lw4k_admin";
 const DEFAULT_REPO = "manavbavadiya/lumawalls-feed";
@@ -23,6 +23,7 @@ const state = {
   buyers: undefined, buyersError: null,
   upload: null,
   login: null, // the site's encrypted ID + password sign-in (admin-login.json), null = not set up
+  local: false, // served by backend/tools/admin_server.py on this computer: it checks the login and publishes
 };
 
 // ---- tiny DOM helpers ---------------------------------------------------------------------------------------
@@ -108,6 +109,14 @@ const store = {
 // ---- start / sign in ---------------------------------------------------------------------------------------
 
 async function start() {
+  // Local mode: backend/tools/admin_server.py answers /api/status; sign-in and publishing go through it (no token).
+  const local = MOCK ? null : await fetch(SITE + "api/status", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  if (local && local.local) {
+    state.local = true;
+    if (local.repo) state.repo = local.repo;
+    state.user = "this computer";
+    return local.signedIn ? loadData() : renderPasswordLogin();
+  }
   state.login = await fetchLogin(SITE, MOCK ? null : DEFAULT_REPO);
   if (MOCK) { state.readOnly = false; state.user = "local test"; return loadData(); }
   const saved = store.load();
@@ -162,7 +171,7 @@ async function loadData() {
 }
 
 function renderLogin(error) {
-  return SETUP ? renderSetup(error) : renderPasswordLogin(error);
+  return SETUP && !state.local ? renderSetup(error) : renderPasswordLogin(error);
 }
 
 /** One-time setup: sign in with the GitHub token and save the admin ID + password (the token, encrypted with them). */
@@ -244,6 +253,16 @@ function renderPasswordLogin(error) {
     onsubmit: async (ev) => {
       ev.preventDefault();
       go.disabled = true; msg.textContent = "Checking…"; msg.style.color = "";
+      if (state.local) {
+        try {
+          const r = await fetch(SITE + "api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: id.value, password: password.value }) });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(d.error || "Could not sign in.");
+          store.save({ id: id.value.trim() }, true);
+          await loadData();
+        } catch (e) { msg.style.color = "#ffb4ad"; msg.textContent = e.message; go.disabled = false; }
+        return;
+      }
       try {
         if (!state.login) state.login = await fetchLogin(SITE, DEFAULT_REPO);
         if (!state.login) throw new Error("Sign-in is not set up yet: the owner opens this page with ?setup at the end of the address once.");
@@ -259,7 +278,7 @@ function renderPasswordLogin(error) {
   },
     h("label", { class: "field" }, h("span", {}, "Admin ID"), id),
     h("label", { class: "field" }, h("span", {}, "Password"), withEye(password)),
-    h("label", { class: "check", style: { marginBottom: "14px" } }, remember, "Remember on this browser"),
+    state.local ? null : h("label", { class: "check", style: { marginBottom: "14px" } }, remember, "Remember on this browser"),
     msg,
     h("div", { class: "row" }, go));
   loginCard(form);
@@ -267,6 +286,7 @@ function renderPasswordLogin(error) {
 }
 
 function signOut() {
+  if (state.local) fetch(SITE + "api/logout", { method: "POST" }).catch(() => {});
   const id = store.load().id;
   store.clear();
   if (id) store.save({ id }, false);
@@ -295,8 +315,8 @@ function renderApp() {
     h("div", { class: "brand" }, h("img", { src: "icon.png", alt: "" }), h("div", {}, h("b", {}, "Live Wallpapers 4K"), h("span", {}, "Admin"))),
     PAGES.map(([id, label, ic]) => h("button", { class: "nav" + (state.page === id ? " on" : ""), onclick: () => go(id) }, icon(ic), label)),
     h("div", { class: "grow" }),
-    h("div", { class: "who" }, state.readOnly ? "Read-only (not signed in)" : MOCK ? "Local test mode" : `Signed in · ${state.repo}`),
-    state.gh || state.readOnly ? h("button", { class: "nav signout", onclick: signOut }, icon("out"), state.readOnly ? "Sign in" : "Sign out") : null,
+    h("div", { class: "who" }, state.readOnly ? "Read-only (not signed in)" : MOCK ? "Local test mode" : state.local ? `This computer · ${state.repo}` : `Signed in · ${state.repo}`),
+    state.gh || state.local || state.readOnly ? h("button", { class: "nav signout", onclick: signOut }, icon("out"), state.readOnly ? "Sign in" : "Sign out") : null,
   );
   topBar = h("div", { class: "top" });
   const content = h("div", { class: "content" });
@@ -367,6 +387,9 @@ function publish() {
         console.log("MOCK publish", message, files.map((f) => f.path + (f.delete ? " (delete)" : f.bytes ? ` (${f.bytes.length} bytes)` : ` (${f.text.length} chars)`)));
         window.__lastPublish = { message, files };
         steps.append(h("div", {}, `Test mode: ${files.length} file(s) prepared, nothing sent.`));
+      } else if (state.local) {
+        steps.append(h("div", {}, "Saving and pushing to GitHub…"));
+        await localPublish(message, files);
       } else {
         await state.gh.commit(state.repo, state.branch, message, files, (s) => steps.append(h("div", {}, s)));
       }
@@ -379,6 +402,21 @@ function publish() {
       ok.disabled = false;
     }
   };
+}
+
+/** Sends the files to backend/tools/admin_server.py, which commits and pushes them with this computer's git login. */
+async function localPublish(message, files) {
+  const b64 = (bytes) => {
+    let out = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) out += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(out);
+  };
+  const body = JSON.stringify({ message, files: files.map((f) => (f.delete ? { path: f.path, delete: true } : f.bytes ? { path: f.path, b64: b64(f.bytes) } : { path: f.path, text: f.text })) });
+  const r = await fetch(SITE + "api/publish", { method: "POST", headers: { "Content-Type": "application/json" }, body });
+  const d = await r.json().catch(() => ({}));
+  if (r.status === 401) { signOut(); throw new Error("Signed out: sign in again, then publish."); }
+  if (!r.ok) throw new Error(d.error || `Publish failed (${r.status})`);
+  return d.commit;
 }
 
 function downloadAdmin() {
@@ -424,6 +462,12 @@ function pageDashboard(root) {
 }
 
 function signInCard() {
+  if (state.local) {
+    return h("div", { class: "card" }, h("h2", {}, "Admin sign-in"),
+      h("p", {}, "Running on this computer: the ID and password are checked here and Publish pushes with this computer's GitHub login."),
+      h("p", { class: "hint" }, "Change the ID or password: stop the server, run  python3 backend/tools/admin_server.py --set-login , then start it again."),
+      h("div", { class: "row", style: { marginTop: "10px" } }, h("button", { class: "btn ghost", onclick: signOut }, "Sign out")));
+  }
   const canSet = !!state.gh || MOCK;
   return h("div", { class: "card" }, h("h2", {}, "Admin sign-in"),
     h("p", {}, "ID and password sign-in: ", h("b", {}, state.login ? "on" : "not set up")),
@@ -431,7 +475,7 @@ function signInCard() {
     canSet ? h("div", { class: "row" },
       h("button", { class: "btn", onclick: setLoginDialog }, state.login ? "Change ID or password" : "Set ID and password")) : null,
     // The sidebar's Sign out is hidden on phones; this one is always there.
-    state.gh || state.readOnly ? h("div", { class: "row", style: { marginTop: "10px" } },
+    state.gh || state.local || state.readOnly ? h("div", { class: "row", style: { marginTop: "10px" } },
       h("button", { class: "btn ghost", onclick: signOut }, state.readOnly ? "Sign in" : "Sign out")) : null);
 }
 
@@ -927,7 +971,9 @@ async function loadBuyers() {
 
 function pageBuyers(root) {
   if (!state.gh) {
-    root.append(h("div", { class: "card" }, h("h2", {}, "Sign in to see buyers"), h("p", { class: "hint" }, "The list of orders is private and needs your GitHub token.")));
+    root.append(h("div", { class: "card" }, h("h2", {}, state.local ? "Buyers" : "Sign in to see buyers"), h("p", { class: "hint" }, state.local
+      ? "The list of orders comes from the private repository lumawalls-admin-data (Google Play sales reports), which is not set up yet. See backend/admin-data/README.md."
+      : "The list of orders is private and needs your GitHub token.")));
     return;
   }
   if (state.buyers === undefined) {
