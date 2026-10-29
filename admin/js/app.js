@@ -1,15 +1,17 @@
 // Live Wallpapers 4K - admin panel. Plain ES modules, no build step; served from the wallpaper site (GitHub Pages)
 // at /admin/. Reads feed.json + admin.json, edits admin.json, publishes through the GitHub API.
-import { GitHub } from "./github.js?v=c8b754749c";
-import { Model, KINDS, KIND_LABEL, TAGS, DEFAULT_CONFIG } from "./model.js?v=c8b754749c";
-import { processPhoto, processVideo, posterFromUrl, MAX_VIDEO_MB } from "./media.js?v=c8b754749c";
-import { LOGIN_FILE, lock, unlock, fetchLogin } from "./login.js?v=c8b754749c";
+import { GitHub } from "./github.js?v=ecf40a71f5";
+import { Model, KINDS, KIND_LABEL, TAGS, DEFAULT_CONFIG } from "./model.js?v=ecf40a71f5";
+import { processPhoto, processVideo, posterFromUrl, MAX_VIDEO_MB } from "./media.js?v=ecf40a71f5";
+import { LOGIN_FILE, lock, unlock, fetchLogin } from "./login.js?v=ecf40a71f5";
 
 const STORE_KEY = "lw4k_admin";
 const DEFAULT_REPO = "manavbavadiya/lumawalls-feed";
 const DEFAULT_DATA_REPO = "manavbavadiya/lumawalls-admin-data";
 const SITE = new URL("../", location.href).href; // the wallpaper site this panel is served from
 const MOCK = new URLSearchParams(location.search).has("mock"); // local testing: publish shows the files instead
+// One-time owner setup (admin/?setup): GitHub token + admin ID and password. The normal login page asks only for ID and password.
+const SETUP = new URLSearchParams(location.search).has("setup");
 const NEW_FOR_SEC = 14 * 24 * 3600;
 const PAGE = 120;
 
@@ -21,7 +23,6 @@ const state = {
   buyers: undefined, buyersError: null,
   upload: null,
   login: null, // the site's encrypted ID + password sign-in (admin-login.json), null = not set up
-  tokenForm: false, // show the GitHub-token form even though ID + password sign-in exists
 };
 
 // ---- tiny DOM helpers ---------------------------------------------------------------------------------------
@@ -154,41 +155,58 @@ async function loadData() {
 }
 
 function renderLogin(error) {
-  if (state.login && !state.tokenForm) return renderPasswordLogin(error);
+  return SETUP ? renderSetup(error) : renderPasswordLogin(error);
+}
+
+/** One-time setup: sign in with the GitHub token and save the admin ID + password (the token, encrypted with them). */
+function renderSetup(error) {
   const saved = store.load();
   const token = h("input", { type: "password", placeholder: "github_pat_…", autocomplete: "off", value: "" });
-  const remember = h("input", { type: "checkbox", checked: !!saved.remember });
+  const id = h("input", { type: "text", autocomplete: "username", autocapitalize: "off", spellcheck: "false", value: saved.id || "admin" });
+  const pw = h("input", { type: "password", autocomplete: "new-password" });
+  const pw2 = h("input", { type: "password", autocomplete: "new-password" });
   const repo = h("input", { type: "text", value: state.repo });
   const dataRepo = h("input", { type: "text", value: state.dataRepo });
   const msg = h("div", { class: "hint", style: { color: "#ffb4ad", minHeight: "20px" } }, error || "");
-  const go = h("button", { class: "btn primary", type: "submit" }, "Sign in");
+  const go = h("button", { class: "btn primary", type: "submit" }, "Save and sign in");
   const form = h("form", {
     onsubmit: async (ev) => {
       ev.preventDefault();
-      go.disabled = true; msg.textContent = "";
+      msg.style.color = "#ffb4ad";
+      if (id.value.trim().length < 3) { msg.textContent = "The ID needs at least 3 characters."; return; }
+      if (pw.value.length < 8) { msg.textContent = "The password needs at least 8 characters."; return; }
+      if (pw.value !== pw2.value) { msg.textContent = "The two passwords are different."; return; }
+      go.disabled = true; msg.style.color = ""; msg.textContent = "Checking the token…";
       state.repo = repo.value.trim(); state.dataRepo = dataRepo.value.trim();
       try {
         await signIn(token.value.trim());
-        store.save({ token: token.value.trim(), repo: state.repo, dataRepo: state.dataRepo, remember: remember.checked }, remember.checked);
-      } catch (e) { msg.textContent = e.message; go.disabled = false; }
+      } catch (e) { msg.style.color = "#ffb4ad"; msg.textContent = e.message; go.disabled = false; return; }
+      try {
+        const text = await lock(id.value, pw.value, { token: state.gh.token, repo: state.repo, dataRepo: state.dataRepo });
+        await saveLoginFile(text, "Admin: sign-in ID and password updated");
+        state.login = JSON.parse(text);
+        store.save({ token: state.gh.token, repo: state.repo, dataRepo: state.dataRepo, id: id.value.trim(), remember: false }, false);
+        history.replaceState(null, "", location.pathname);
+        toast("Saved. From now on sign in with this ID and password (the website takes about a minute to update).");
+      } catch (e) { toast("Could not save the ID and password: " + e.message, true); }
     },
   },
     h("label", { class: "field" }, h("span", {}, "GitHub token"), withEye(token)),
-    h("label", { class: "check", style: { marginBottom: "14px" } }, remember, "Remember on this browser"),
+    h("label", { class: "field" }, h("span", {}, "Admin ID"), id),
+    h("label", { class: "field" }, h("span", {}, "Password (8 or more characters)"), withEye(pw)),
+    h("label", { class: "field" }, h("span", {}, "Repeat the password"), withEye(pw2)),
     h("details", {}, h("summary", {}, "Repositories"),
       h("label", { class: "field" }, h("span", {}, "Wallpaper site (public)"), repo),
       h("label", { class: "field" }, h("span", {}, "Buyers data (private)"), dataRepo)),
     msg,
-    h("div", { class: "row" }, go, h("button", { class: "btn ghost", type: "button", onclick: () => { state.readOnly = true; loadData(); } }, "View read-only")),
+    h("div", { class: "row" }, go),
   );
-  loginCard(form,
-    state.login ? h("p", { class: "hint", style: { marginTop: "14px" } },
-      h("a", { href: "#", onclick: (e) => { e.preventDefault(); state.tokenForm = false; renderLogin(); } }, "Sign in with ID and password")) : null,
+  loginCard(h("h2", { style: { margin: "0 0 12px" } }, "One-time setup"), form,
     h("p", { class: "hint", style: { marginTop: "18px" } },
-      "Create a token at ", h("a", { href: "https://github.com/settings/personal-access-tokens/new", target: "_blank", rel: "noopener" }, "GitHub › Fine-grained tokens"),
-      ": Repository access → only ", h("b", {}, "lumawalls-feed"), " and ", h("b", {}, "lumawalls-admin-data"),
-      "; Permissions → Contents: Read and write. The token stays in this browser and is sent only to GitHub.",
-      state.login ? null : h("span", {}, " After signing in, set an admin ID and password on the Dashboard to sign in without the token next time.")));
+      "The panel saves your changes to GitHub, so it needs a GitHub key once. Create a token at ",
+      h("a", { href: "https://github.com/settings/personal-access-tokens/new", target: "_blank", rel: "noopener" }, "GitHub › Fine-grained tokens"),
+      ": Repository access → only ", h("b", {}, "lumawalls-feed"), " (and ", h("b", {}, "lumawalls-admin-data"), " once it exists); Permissions → Contents: Read and write. ",
+      "It is saved encrypted with the ID and password; after this, the login page asks only for the ID and password. Do this again only if the token expires."));
 }
 
 function loginCard(...kids) {
@@ -209,11 +227,12 @@ function renderPasswordLogin(error) {
       ev.preventDefault();
       go.disabled = true; msg.textContent = "Checking…"; msg.style.color = "";
       try {
+        if (!state.login) throw new Error("Sign-in is not set up yet: the owner opens this page with ?setup at the end of the address once.");
         const p = await unlock(state.login, id.value, password.value);
         if (p.repo) state.repo = p.repo;
         if (p.dataRepo) state.dataRepo = p.dataRepo;
         await signIn(p.token).catch((e) => {
-          throw new Error(e.message + " Sign in once with a new GitHub token, then set the ID and password again on the Dashboard.");
+          throw new Error(e.message + " The owner opens this page with ?setup at the end of the address once, with a new GitHub token.");
         });
         store.save({ token: p.token, repo: state.repo, dataRepo: state.dataRepo, id: id.value.trim(), remember: remember.checked }, remember.checked);
       } catch (e) { msg.style.color = "#ffb4ad"; msg.textContent = e.message; go.disabled = false; }
@@ -223,9 +242,8 @@ function renderPasswordLogin(error) {
     h("label", { class: "field" }, h("span", {}, "Password"), withEye(password)),
     h("label", { class: "check", style: { marginBottom: "14px" } }, remember, "Remember on this browser"),
     msg,
-    h("div", { class: "row" }, go, h("button", { class: "btn ghost", type: "button", onclick: () => { state.readOnly = true; loadData(); } }, "View read-only")));
-  loginCard(form, h("p", { class: "hint", style: { marginTop: "18px" } },
-    h("a", { href: "#", onclick: (e) => { e.preventDefault(); state.tokenForm = true; renderLogin(); } }, "Use a GitHub token instead")));
+    h("div", { class: "row" }, go));
+  loginCard(form);
   (id.value ? password : id).focus();
 }
 
@@ -233,7 +251,6 @@ function signOut() {
   const id = store.load().id;
   store.clear();
   if (id) store.save({ id }, false);
-  state.tokenForm = false;
   state.gh = null; state.model = null; state.buyers = undefined;
   renderLogin();
 }
@@ -391,12 +408,9 @@ function signInCard() {
   const canSet = !!state.gh || MOCK;
   return h("div", { class: "card" }, h("h2", {}, "Admin sign-in"),
     h("p", {}, "ID and password sign-in: ", h("b", {}, state.login ? "on" : "not set up")),
-    h("p", { class: "hint" }, canSet
-      ? "Sign in with an admin ID and password instead of the GitHub token, on any computer or phone. The token is saved encrypted with them on the wallpaper site, so pick a long password nobody can guess."
-      : "Sign in with the GitHub token to set or change the ID and password."),
+    h("p", { class: "hint" }, "The login page asks only for the admin ID and password, on any computer or phone. They unlock the GitHub key saved (encrypted) on the wallpaper site, so pick a password nobody can guess."),
     canSet ? h("div", { class: "row" },
-      h("button", { class: "btn", onclick: setLoginDialog }, state.login ? "Change ID or password" : "Set ID and password"),
-      state.login ? h("button", { class: "btn danger", onclick: removeLogin }, "Turn off") : null) : null,
+      h("button", { class: "btn", onclick: setLoginDialog }, state.login ? "Change ID or password" : "Set ID and password")) : null,
     // The sidebar's Sign out is hidden on phones; this one is always there.
     state.gh || state.readOnly ? h("div", { class: "row", style: { marginTop: "10px" } },
       h("button", { class: "btn ghost", onclick: signOut }, state.readOnly ? "Sign in" : "Sign out")) : null);
@@ -409,7 +423,7 @@ async function saveLoginFile(text, message) {
 }
 
 function setLoginDialog() {
-  const id = h("input", { type: "text", autocomplete: "username", autocapitalize: "off", spellcheck: "false", value: store.load().id || "" });
+  const id = h("input", { type: "text", autocomplete: "username", autocapitalize: "off", spellcheck: "false", value: store.load().id || "admin" });
   const pw = h("input", { type: "password", autocomplete: "new-password" });
   const pw2 = h("input", { type: "password", autocomplete: "new-password" });
   const err = h("div", { class: "hint", style: { color: "#ffb4ad", minHeight: "18px" } });
@@ -440,14 +454,6 @@ function setLoginDialog() {
       err,
       h("div", { class: "row end" }, h("button", { class: "btn", type: "button", onclick: () => w.remove() }, "Cancel"), save)));
   id.focus();
-}
-
-async function removeLogin() {
-  if (!confirm("Turn off ID and password sign-in? You will need the GitHub token to sign in.")) return;
-  try {
-    await saveLoginFile(null, "Admin: ID and password sign-in turned off");
-    state.login = null; toast("ID and password sign-in turned off"); renderApp();
-  } catch (e) { toast(e.message, true); }
 }
 
 // ---- categories ---------------------------------------------------------------------------------------------
