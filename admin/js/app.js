@@ -1,9 +1,9 @@
 // Live Wallpapers 4K - admin panel. Plain ES modules, no build step; served from the wallpaper site (GitHub Pages)
 // at /admin/. Reads feed.json + admin.json, edits admin.json, publishes through the GitHub API.
-import { GitHub } from "./github.js?v=ecf40a71f5";
-import { Model, KINDS, KIND_LABEL, TAGS, DEFAULT_CONFIG } from "./model.js?v=ecf40a71f5";
-import { processPhoto, processVideo, posterFromUrl, MAX_VIDEO_MB } from "./media.js?v=ecf40a71f5";
-import { LOGIN_FILE, lock, unlock, fetchLogin } from "./login.js?v=ecf40a71f5";
+import { GitHub } from "./github.js?v=d099715b78";
+import { Model, KINDS, KIND_LABEL, TAGS, DEFAULT_CONFIG } from "./model.js?v=d099715b78";
+import { processPhoto, processVideo, posterFromUrl, MAX_VIDEO_MB } from "./media.js?v=d099715b78";
+import { LOGIN_FILE, lock, unlock, fetchLogin } from "./login.js?v=d099715b78";
 
 const STORE_KEY = "lw4k_admin";
 const DEFAULT_REPO = "manavbavadiya/lumawalls-feed";
@@ -122,7 +122,7 @@ async function start() {
 async function signIn(token) {
   const gh = new GitHub(token);
   const r = await gh.repo(state.repo).catch((e) => {
-    throw new Error(e.status === 401 ? "That token is not valid (or has expired)." : e.status === 404
+    throw new Error(e.status === 401 ? "GitHub did not accept this token: copy the whole token again (it starts with github_pat_) and check it has not expired." : e.status === 404
       ? `The token cannot see ${state.repo}. Give it access to that repository.` : e.message);
   });
   if (!r.canPush) throw new Error(`The token can read ${state.repo} but not write to it. Give it "Contents: Read and write".`);
@@ -173,6 +173,7 @@ function renderSetup(error) {
     onsubmit: async (ev) => {
       ev.preventDefault();
       msg.style.color = "#ffb4ad";
+      if (!token.value.trim()) { msg.textContent = "Paste your GitHub token first: create it with the link below, copy it, and paste it in the GitHub token box."; token.focus(); return; }
       if (id.value.trim().length < 3) { msg.textContent = "The ID needs at least 3 characters."; return; }
       if (pw.value.length < 8) { msg.textContent = "The password needs at least 8 characters."; return; }
       if (pw.value !== pw2.value) { msg.textContent = "The two passwords are different."; return; }
