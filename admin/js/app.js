@@ -1,9 +1,9 @@
 // Live Wallpapers 4K - admin panel. Plain ES modules, no build step; served from the wallpaper site (GitHub Pages)
 // at /admin/. Reads feed.json + admin.json, edits admin.json, publishes through the GitHub API.
-import { GitHub } from "./github.js?v=d099715b78";
-import { Model, KINDS, KIND_LABEL, TAGS, DEFAULT_CONFIG } from "./model.js?v=d099715b78";
-import { processPhoto, processVideo, posterFromUrl, MAX_VIDEO_MB } from "./media.js?v=d099715b78";
-import { LOGIN_FILE, lock, unlock, fetchLogin } from "./login.js?v=d099715b78";
+import { GitHub } from "./github.js?v=422e416d6b";
+import { Model, KINDS, KIND_LABEL, TAGS, DEFAULT_CONFIG } from "./model.js?v=422e416d6b";
+import { processPhoto, processVideo, posterFromUrl, MAX_VIDEO_MB } from "./media.js?v=422e416d6b";
+import { LOGIN_FILE, lock, unlock, fetchLogin } from "./login.js?v=422e416d6b";
 
 const STORE_KEY = "lw4k_admin";
 const DEFAULT_REPO = "manavbavadiya/lumawalls-feed";
@@ -108,7 +108,7 @@ const store = {
 // ---- start / sign in ---------------------------------------------------------------------------------------
 
 async function start() {
-  state.login = await fetchLogin(SITE);
+  state.login = await fetchLogin(SITE, MOCK ? null : DEFAULT_REPO);
   if (MOCK) { state.readOnly = false; state.user = "local test"; return loadData(); }
   const saved = store.load();
   if (saved.repo) state.repo = saved.repo;
@@ -119,13 +119,20 @@ async function start() {
   renderLogin();
 }
 
-async function signIn(token) {
-  const gh = new GitHub(token);
+/** Checks that [gh]'s token can open and change the wallpaper site; returns the repo info or throws a plain message. */
+async function checkToken(gh) {
+  const owner = state.repo.split("/")[0], name = state.repo.split("/")[1];
   const r = await gh.repo(state.repo).catch((e) => {
     throw new Error(e.status === 401 ? "GitHub did not accept this token: copy the whole token again (it starts with github_pat_) and check it has not expired." : e.status === 404
-      ? `The token cannot see ${state.repo}. Give it access to that repository.` : e.message);
+      ? `This token cannot open ${state.repo}. Create the token while signed in to GitHub as ${state.repo.split("/")[0]}, with Repository access → ${state.repo.split("/")[1]}.` : e.message);
   });
-  if (!r.canPush) throw new Error(`The token can read ${state.repo} but not write to it. Give it "Contents: Read and write".`);
+  if (!r.canPush) throw new Error(`This token cannot change ${state.repo}. Create the token while signed in to GitHub as ${owner}, with Repository access → ${name} and Permissions → Contents → Read and write.`);
+  return r;
+}
+
+async function signIn(token) {
+  const gh = new GitHub(token);
+  const r = await checkToken(gh);
   state.gh = gh;
   state.branch = r.defaultBranch;
   state.readOnly = false;
@@ -179,17 +186,27 @@ function renderSetup(error) {
       if (pw.value !== pw2.value) { msg.textContent = "The two passwords are different."; return; }
       go.disabled = true; msg.style.color = ""; msg.textContent = "Checking the token…";
       state.repo = repo.value.trim(); state.dataRepo = dataRepo.value.trim();
+      const key = token.value.trim();
+      let text;
       try {
-        await signIn(token.value.trim());
-      } catch (e) { msg.style.color = "#ffb4ad"; msg.textContent = e.message; go.disabled = false; return; }
-      try {
-        const text = await lock(id.value, pw.value, { token: state.gh.token, repo: state.repo, dataRepo: state.dataRepo });
-        await saveLoginFile(text, "Admin: sign-in ID and password updated");
-        state.login = JSON.parse(text);
-        store.save({ token: state.gh.token, repo: state.repo, dataRepo: state.dataRepo, id: id.value.trim(), remember: false }, false);
-        history.replaceState(null, "", location.pathname);
-        toast("Saved. From now on sign in with this ID and password (the website takes about a minute to update).");
-      } catch (e) { toast("Could not save the ID and password: " + e.message, true); }
+        const gh = new GitHub(key);
+        const r = await checkToken(gh);
+        msg.textContent = "Saving the ID and password…";
+        text = await lock(id.value, pw.value, { token: key, repo: state.repo, dataRepo: state.dataRepo });
+        await gh.commit(state.repo, r.defaultBranch, "Admin: sign-in ID and password updated", [{ path: LOGIN_FILE, text }]);
+      } catch (e) {
+        msg.style.color = "#ffb4ad";
+        msg.textContent = e.status === 403 || e.status === 404
+          ? "This token can read the site but cannot save to it. On GitHub, edit the token: Permissions → Contents → Read and write (and Repository access → lumawalls-feed), then press Save again."
+          : e.message;
+        go.disabled = false;
+        return;
+      }
+      state.login = JSON.parse(text);
+      store.save({ token: key, repo: state.repo, dataRepo: state.dataRepo, id: id.value.trim(), remember: false }, false);
+      history.replaceState(null, "", location.pathname);
+      toast("Saved. From now on sign in with this ID and password (the website takes about a minute to update).");
+      try { await signIn(key); } catch (e) { renderPasswordLogin(e.message); }
     },
   },
     h("label", { class: "field" }, h("span", {}, "GitHub token"), withEye(token)),
@@ -228,6 +245,7 @@ function renderPasswordLogin(error) {
       ev.preventDefault();
       go.disabled = true; msg.textContent = "Checking…"; msg.style.color = "";
       try {
+        if (!state.login) state.login = await fetchLogin(SITE, DEFAULT_REPO);
         if (!state.login) throw new Error("Sign-in is not set up yet: the owner opens this page with ?setup at the end of the address once.");
         const p = await unlock(state.login, id.value, password.value);
         if (p.repo) state.repo = p.repo;

@@ -35,14 +35,18 @@ export async function unlock(file, id, password) {
   }
 }
 
-/** The site's login file, or null when no ID + password has been set up yet. */
-export async function fetchLogin(site) {
-  try {
-    const r = await fetch(site + LOGIN_FILE, { cache: "no-store" });
-    if (!r.ok) return null;
-    const file = await r.json();
-    return file && file.data && file.salt && file.iv ? file : null;
-  } catch (_) {
-    return null;
+/** The site's login file, or null when no ID + password has been set up yet. Falls back to reading it straight from
+ *  the repository: GitHub Pages takes about a minute to publish it after the setup. */
+export async function fetchLogin(site, repo) {
+  const sources = [site + LOGIN_FILE];
+  if (repo) sources.push(`https://api.github.com/repos/${repo}/contents/${LOGIN_FILE}`);
+  for (const url of sources) {
+    try {
+      const r = await fetch(url, { cache: "no-store", headers: url.startsWith("https://api.github.com") ? { Accept: "application/vnd.github.raw+json" } : {} });
+      if (!r.ok) continue;
+      const file = await r.json();
+      if (file && file.data && file.salt && file.iv) return file;
+    } catch (_) { /* try the next source */ }
   }
+  return null;
 }
