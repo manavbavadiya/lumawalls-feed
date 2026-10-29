@@ -10,7 +10,7 @@ export const DEFAULT_CONFIG = {
   lifetimePrice: "₹299.00",
   trialDays: 3,
   adsEnabled: true,
-  rewardedEnabled: true,
+  rewardedEnabled: false,
   interstitialAfterSet: true,
   interstitialEveryPreviews: 3,
   interstitialMinGapSec: 60,

@@ -1,9 +1,9 @@
 // Live Wallpapers 4K - admin panel. Plain ES modules, no build step; served from the wallpaper site (GitHub Pages)
 // at /admin/. Reads feed.json + admin.json, edits admin.json, publishes through the GitHub API.
-import { GitHub } from "./github.js?v=56e5f3f61b";
-import { Model, KINDS, KIND_LABEL, TAGS, DEFAULT_CONFIG } from "./model.js?v=56e5f3f61b";
-import { processPhoto, processVideo, posterFromUrl, MAX_VIDEO_MB } from "./media.js?v=56e5f3f61b";
-import { LOGIN_FILE, lock, unlock, fetchLogin } from "./login.js?v=56e5f3f61b";
+import { GitHub } from "./github.js?v=c8b754749c";
+import { Model, KINDS, KIND_LABEL, TAGS, DEFAULT_CONFIG } from "./model.js?v=c8b754749c";
+import { processPhoto, processVideo, posterFromUrl, MAX_VIDEO_MB } from "./media.js?v=c8b754749c";
+import { LOGIN_FILE, lock, unlock, fetchLogin } from "./login.js?v=c8b754749c";
 
 const STORE_KEY = "lw4k_admin";
 const DEFAULT_REPO = "manavbavadiya/lumawalls-feed";
@@ -787,7 +787,7 @@ function pageUpload(root) {
       h("label", { class: "field" }, h("span", {}, "Title"), h("input", { type: "text", value: u.title, oninput: (e) => { u.title = e.target.value; } })),
       h("label", { class: "field" }, h("span", {}, "Category"),
         categorySelect(kindOf[u.type], u.category, (key) => { const added = !cats.some((c) => c.key === key); u.category = key; if (added) rerender(); })),
-      h("label", { class: "check" }, h("input", { type: "checkbox", checked: u.pro, onchange: (e) => { u.pro = e.target.checked; } }), "Pro wallpaper")),
+      h("label", { class: "check" }, h("input", { type: "checkbox", checked: u.pro, onchange: (e) => { u.pro = e.target.checked; } }), "Pro wallpaper: only people who bought Pro can set, download or share it")),
     h("div", {},
       h("label", { class: "field" }, h("span", {}, "Author (shown in the app)"), h("input", { type: "text", value: u.author, oninput: (e) => { u.author = e.target.value; } })),
       h("label", { class: "field" }, h("span", {}, "Licence"),
@@ -877,7 +877,7 @@ function pagePremium(root) {
         num("trialDays", "Free trial days (0 = no trial)", 0, 30)),
       h("div", { class: "card" }, h("h2", {}, "Ads"),
         tog("adsEnabled", "Show ads to free users"),
-        tog("rewardedEnabled", "Offer “Watch an ad to unlock” on Pro wallpapers"),
+        tog("rewardedEnabled", "Also let free users unlock one Pro wallpaper by watching an ad (off: only people who bought Pro can use Pro wallpapers)"),
         tog("interstitialAfterSet", "Full-screen ad after a wallpaper is set"),
         num("interstitialEveryPreviews", "Full-screen ad on every Nth wallpaper opened (0 = never)", 0, 50),
         num("interstitialMinGapSec", "At most one full-screen ad every … seconds", 30, 3600, "Google recommends not showing full-screen ads too often; 60 s or more."),
