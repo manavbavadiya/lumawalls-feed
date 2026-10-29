@@ -1,0 +1,56 @@
+{
+ "schema": 1,
+ "updatedAt": 1793278353,
+ "config": {
+  "weeklyPrice": "₹50.00",
+  "lifetimePrice": "₹299.00",
+  "trialDays": 3,
+  "adsEnabled": true,
+  "rewardedEnabled": false,
+  "interstitialAfterSet": true,
+  "interstitialEveryPreviews": 3,
+  "interstitialMinGapSec": 60
+ },
+ "categories": [],
+ "walls": {
+  "video_people_04": {
+   "pro": true
+  }
+ },
+ "added": {
+  "walls": [
+   {
+    "id": "up_mvtjmlg42k0z",
+    "title": "ddfdfdfdf",
+    "tags": [],
+    "pro": true,
+    "rank": 0,
+    "addedAt": 1793278348,
+    "seed": 1813,
+    "kind": "STATIC",
+    "category": "architecture",
+    "photo": "up_mvtjmlg42k0z"
+   }
+  ],
+  "photos": [
+   {
+    "id": "up_mvtjmlg42k0z",
+    "category": "architecture",
+    "file": "",
+    "title": "ddfdfdfdf",
+    "author": "test",
+    "license": "Own work",
+    "licenseUrl": "",
+    "source": "",
+    "width": 720,
+    "height": 1600,
+    "focusX": 0.32,
+    "focusY": 0.5,
+    "uhd": false,
+    "url": "https://manavbavadiya.github.io/lumawalls-feed/uploads/up_mvtjmlg42k0z.jpg",
+    "thumb": "uploads/thumbs/up_mvtjmlg42k0z.webp"
+   }
+  ],
+  "videos": []
+ }
+}
