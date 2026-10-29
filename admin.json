@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "updatedAt": 1793278353,
+ "updatedAt": 1793278941,
  "config": {
   "weeklyPrice": "₹50.00",
   "lifetimePrice": "₹299.00",
@@ -30,6 +30,18 @@
     "kind": "STATIC",
     "category": "architecture",
     "photo": "up_mvtjmlg42k0z"
+   },
+   {
+    "id": "up_mvtjz7sj8yxg",
+    "title": "WhatsApp Image",
+    "tags": [],
+    "pro": false,
+    "rank": 0,
+    "addedAt": 1793278937,
+    "seed": 1325,
+    "kind": "STATIC",
+    "category": "aerial_view",
+    "photo": "up_mvtjz7sj8yxg"
    }
   ],
   "photos": [
@@ -49,6 +61,23 @@
     "uhd": false,
     "url": "https://manavbavadiya.github.io/lumawalls-feed/uploads/up_mvtjmlg42k0z.jpg",
     "thumb": "uploads/thumbs/up_mvtjmlg42k0z.webp"
+   },
+   {
+    "id": "up_mvtjz7sj8yxg",
+    "category": "aerial_view",
+    "file": "",
+    "title": "WhatsApp Image",
+    "author": "",
+    "license": "Own work",
+    "licenseUrl": "",
+    "source": "",
+    "width": 720,
+    "height": 1600,
+    "focusX": 0,
+    "focusY": 0.5,
+    "uhd": false,
+    "url": "https://manavbavadiya.github.io/lumawalls-feed/uploads/up_mvtjz7sj8yxg.jpg",
+    "thumb": "uploads/thumbs/up_mvtjz7sj8yxg.webp"
    }
   ],
   "videos": []
