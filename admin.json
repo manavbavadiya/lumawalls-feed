@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "updatedAt": 1793278941,
+ "updatedAt": 1793339799,
  "config": {
   "weeklyPrice": "₹50.00",
   "lifetimePrice": "₹299.00",
@@ -42,6 +42,18 @@
     "kind": "STATIC",
     "category": "aerial_view",
     "photo": "up_mvtjz7sj8yxg"
+   },
+   {
+    "id": "up_mvuk7jtm5r53",
+    "title": "WhatsApp Image 2026 10 30 at 11.09.51 AM",
+    "tags": [],
+    "pro": false,
+    "rank": 0,
+    "addedAt": 1793339792,
+    "seed": 672,
+    "kind": "STATIC",
+    "category": "music",
+    "photo": "up_mvuk7jtm5r53"
    }
   ],
   "photos": [
@@ -78,6 +90,23 @@
     "uhd": false,
     "url": "https://manavbavadiya.github.io/lumawalls-feed/uploads/up_mvtjz7sj8yxg.jpg",
     "thumb": "uploads/thumbs/up_mvtjz7sj8yxg.webp"
+   },
+   {
+    "id": "up_mvuk7jtm5r53",
+    "category": "music",
+    "file": "",
+    "title": "WhatsApp Image 2026 10 30 at 11.09.51 AM",
+    "author": "",
+    "license": "Own work",
+    "licenseUrl": "",
+    "source": "",
+    "width": 720,
+    "height": 1600,
+    "focusX": 0.5,
+    "focusY": 0.5,
+    "uhd": false,
+    "url": "https://manavbavadiya.github.io/lumawalls-feed/uploads/up_mvuk7jtm5r53.jpg",
+    "thumb": "uploads/thumbs/up_mvuk7jtm5r53.webp"
    }
   ],
   "videos": []
