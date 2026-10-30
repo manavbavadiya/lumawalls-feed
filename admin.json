@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "updatedAt": 1793339799,
+ "updatedAt": 1793339874,
  "config": {
   "weeklyPrice": "₹50.00",
   "lifetimePrice": "₹299.00",
@@ -15,6 +15,9 @@
  "walls": {
   "video_people_04": {
    "pro": true
+  },
+  "up_mvtjz7sj8yxg": {
+   "hidden": true
   }
  },
  "added": {
