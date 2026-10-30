@@ -14,10 +14,24 @@ export const DEFAULT_CONFIG = {
   interstitialAfterSet: true,
   interstitialEveryPreviews: 3,
   interstitialMinGapSec: 60,
+  interstitialAfterDownload: false,
+  /** AdMob unit ids; blank = the ids built into the app (Google's test ids until release). */
+  interstitialUnitId: "",
+  rewardedUnitId: "",
 };
 
+/** The app's own home banners (HomeScreen.kt DEFAULT_BANNERS), the starting point when the panel customises them. */
+export const DEFAULT_BANNERS = [
+  { title: "SET 'AUTO WALLPAPER CHANGER'", target: "changer", walls: [] },
+  { title: "LIVE GLITTER WALLPAPERS", target: "tab:glitter", walls: [] },
+  { title: "LIVE CLOCK WALLPAPERS", target: "tab:clock", walls: [] },
+];
+
+/** Lists that can be put in a manual order (besides categories) -> the tag that puts a wallpaper in them. */
+export const ORDER_LISTS = { "list:editors": "editors", "list:top": "top", "list:exclusive": "exclusive" };
+
 export function emptyAdmin() {
-  return { schema: 1, updatedAt: 0, config: { ...DEFAULT_CONFIG }, categories: [], walls: {}, added: { walls: [], photos: [], videos: [] } };
+  return { schema: 1, updatedAt: 0, config: { ...DEFAULT_CONFIG }, categories: [], walls: {}, added: { walls: [], photos: [], videos: [] }, banners: [], order: {} };
 }
 
 /** Fills missing parts so the rest of the panel can rely on every field existing. */
@@ -30,6 +44,8 @@ export function normalizeAdmin(a) {
   out.walls = a.walls && typeof a.walls === "object" ? a.walls : {};
   const ad = a.added || {};
   out.added = { walls: ad.walls || [], photos: ad.photos || [], videos: ad.videos || [] };
+  out.banners = Array.isArray(a.banners) ? a.banners : [];
+  out.order = a.order && typeof a.order === "object" ? a.order : {};
   return out;
 }
 
@@ -67,6 +83,11 @@ export class Model {
     const removed = [...ids(before.added.walls)].filter((id) => !ids(this.admin.added.walls).has(id));
     if (added.length) out.push(`${added.length} uploaded`);
     if (removed.length) out.push(`${removed.length} upload${removed.length === 1 ? "" : "s"} deleted`);
+    if (JSON.stringify(before.banners) !== JSON.stringify(this.admin.banners)) out.push("home banners");
+    if (JSON.stringify(before.order) !== JSON.stringify(this.admin.order)) out.push("wallpaper order");
+    const credits = (l) => JSON.stringify(l.map((x) => [x.id, x.title, x.author, x.license, x.source, x.url || x.urls, x.thumb]));
+    const editedUploads = credits(before.added.photos.concat(before.added.videos)) !== credits(this.admin.added.photos.concat(this.admin.added.videos));
+    if (editedUploads && !added.length && !removed.length) out.push("upload details");
     return out;
   }
 
@@ -106,8 +127,9 @@ export class Model {
     const proFrom = e.pro != null ? "wall" : c.pro != null ? "category" : "published";
     return {
       wall: { ...w, category, pro, title: e.title || w.title, tags: e.tags || w.tags || [], pinned: !!e.pinned },
-      hidden: !!e.hidden || !!c.hidden,
-      hiddenBy: e.hidden ? "wall" : c.hidden ? "category" : null,
+      hidden: !!e.hidden || !!e.deleted || !!c.hidden,
+      deleted: !!e.deleted,
+      hiddenBy: e.deleted ? "deleted" : e.hidden ? "wall" : c.hidden ? "category" : null,
       proFrom,
       edited: !!this.admin.walls[w.id],
       uploaded: this.addedIds.has(w.id),
@@ -145,7 +167,7 @@ export class Model {
         edit: e,
         name: e.name || r.name,
         cover: e.cover || r.cover,
-        coverImage: e.cover ? "" : r.coverImage,
+        coverImage: e.coverImage || (e.cover ? "" : r.coverImage),
         hidden: !!e.hidden,
         order: e.order != null ? e.order : 10000 + r.index,
         total: inCat.length,
@@ -175,7 +197,7 @@ export class Model {
     const w = this.baseById.get(id);
     for (const k of Object.keys(e)) {
       if (e[k] === undefined || e[k] === null) delete e[k];
-      else if ((k === "hidden" || k === "pinned") && e[k] === false) delete e[k];
+      else if ((k === "hidden" || k === "pinned" || k === "deleted") && e[k] === false) delete e[k];
       else if (k === "title" && (e[k] === "" || e[k] === w.title)) delete e[k];
       else if (k === "category" && e[k] === w.category) delete e[k];
       else if (k === "tags" && sameSet(e[k], w.tags || [])) delete e[k];
@@ -214,6 +236,101 @@ export class Model {
     this.admin.categories = this.admin.categories.filter((c) => !(c.kind === kind && c.key === key));
   }
 
+  /** Delete for good: an upload loses its files; a published wallpaper is marked deleted (older apps see "hidden"). */
+  deleteWall(id) {
+    if (this.addedIds.has(id)) { this.deleteUpload(id); return; }
+    this.editWall(id, { deleted: true, hidden: true });
+    this.dropFromLists(id);
+  }
+
+  restoreWall(id) {
+    this.editWall(id, { deleted: null, hidden: null });
+  }
+
+  /** Takes a wallpaper out of every manual order and banner (after it was deleted). */
+  dropFromLists(id) {
+    for (const [k, ids] of Object.entries(this.admin.order)) {
+      const left = ids.filter((x) => x !== id);
+      if (left.length) this.admin.order[k] = left; else delete this.admin.order[k];
+    }
+    this.admin.banners.forEach((b) => { b.walls = (b.walls || []).filter((x) => x !== id); });
+  }
+
+  // ---- manual order -------------------------------------------------------------------------------------
+
+  static orderKey(kind, category) { return `category:${kind}/${category}`; }
+
+  getOrder(key) { return this.admin.order[key] || []; }
+
+  setOrder(key, ids) {
+    if (ids && ids.length) this.admin.order[key] = ids; else delete this.admin.order[key];
+  }
+
+  // ---- category pictures --------------------------------------------------------------------------------
+
+  /** A cover picture uploaded for a category (replaces the previous upload, if any). */
+  setCategoryImage(kind, key, file) {
+    this.clearCategoryImage(kind, key);
+    this.uploads.set(file.path, file);
+    this.deletions.delete(file.path);
+    this.editCategory(kind, key, { coverImage: file.path });
+  }
+
+  clearCategoryImage(kind, key) {
+    const e = this.catEdit(kind, key);
+    const old = e && e.coverImage;
+    if (!old) return;
+    if (this.uploads.has(old)) this.uploads.delete(old); else if (old.startsWith("uploads/")) this.deletions.add(old);
+    this.editCategory(kind, key, { coverImage: null });
+  }
+
+  // ---- uploaded wallpapers: details and replacing the file ------------------------------------------------
+
+  /** The photo / video record of an uploaded wallpaper (null for published ones). */
+  uploadRecord(id) {
+    const w = this.admin.added.walls.find((x) => x.id === id);
+    if (!w) return null;
+    return w.photo ? this.admin.added.photos.find((x) => x.id === w.photo) : this.admin.added.videos.find((x) => x.id === w.video);
+  }
+
+  /** Author / licence / source / title of an uploaded wallpaper. */
+  editUpload(id, patch) {
+    const rec = this.uploadRecord(id);
+    const w = this.admin.added.walls.find((x) => x.id === id);
+    if (!rec || !w) return;
+    for (const k of ["author", "license", "source"]) if (patch[k] != null) rec[k] = patch[k];
+    if (patch.title != null && patch.title.trim()) { rec.title = patch.title.trim(); w.title = patch.title.trim(); }
+    this.rebuild();
+  }
+
+  /** New picture / video for an uploaded wallpaper: the old files are removed on publish. */
+  replaceUploadFiles(id, fields, files) {
+    const rec = this.uploadRecord(id);
+    if (!rec) return;
+    const old = [rec.thumb, sitePath(rec.url), ...Object.values(rec.urls || {}).map(sitePath)].filter(Boolean);
+    Object.assign(rec, fields);
+    const keep = new Set(files.map((f) => f.path));
+    for (const p of old) {
+      if (keep.has(p)) continue;
+      if (this.uploads.has(p)) this.uploads.delete(p); else if (p.startsWith("uploads/")) this.deletions.add(p);
+    }
+    files.forEach((f) => { this.uploads.set(f.path, f); this.deletions.delete(f.path); });
+    this.rebuild();
+  }
+
+  /** New crop point for an uploaded photo: a new grid preview replaces the old one (removed on publish). */
+  setUploadCrop(id, focusX, focusY, thumbFile) {
+    const rec = this.uploadRecord(id);
+    if (!rec) return;
+    const old = rec.thumb;
+    rec.focusX = focusX;
+    rec.focusY = focusY;
+    rec.thumb = thumbFile.path;
+    if (old && old !== thumbFile.path) { if (this.uploads.has(old)) this.uploads.delete(old); else if (old.startsWith("uploads/")) this.deletions.add(old); }
+    this.uploads.set(thumbFile.path, thumbFile);
+    this.rebuild();
+  }
+
   // ---- uploads ---------------------------------------------------------------------------------------------
 
   addUpload({ wall, photo, video, files }) {
@@ -238,6 +355,7 @@ export class Model {
     }
     this.admin.added.walls = this.admin.added.walls.filter((x) => x !== w);
     delete this.admin.walls[id];
+    this.dropFromLists(id);
     for (const p of paths.filter(Boolean)) {
       if (this.uploads.has(p)) this.uploads.delete(p); else if (p.startsWith("uploads/")) this.deletions.add(p);
     }

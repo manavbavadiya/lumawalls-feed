@@ -37,6 +37,23 @@ export class GitHub {
     return { defaultBranch: r.default_branch, canPush: !!(r.permissions && r.permissions.push), private: r.private };
   }
 
+  /** Commits that changed [path], newest first: [{sha, author, time, message}]. */
+  async history(fullName, path, ref, limit = 60) {
+    const list = await this.call("GET", `/repos/${fullName}/commits?path=${encodeURIComponent(path)}&sha=${encodeURIComponent(ref)}&per_page=${limit}`);
+    return list.map((c) => ({ sha: c.sha, author: (c.commit.author || {}).name || "", time: Math.floor(Date.parse((c.commit.author || {}).date || 0) / 1000), message: c.commit.message.split("\n")[0] }));
+  }
+
+  /** File bytes at [ref], or null when it does not exist there. */
+  async readBytes(fullName, path, ref) {
+    const res = await fetch(`${API}/repos/${fullName}/contents/${path.split("/").map(encodeURIComponent).join("/")}?ref=${encodeURIComponent(ref)}`, {
+      headers: { Authorization: `Bearer ${this.token}`, Accept: "application/vnd.github.raw+json", "X-GitHub-Api-Version": "2022-11-28" },
+      cache: "no-store",
+    });
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`GitHub: ${res.status} ${res.statusText}`);
+    return new Uint8Array(await res.arrayBuffer());
+  }
+
   /** File text, or null when it does not exist. */
   async readText(fullName, path, ref) {
     try {
