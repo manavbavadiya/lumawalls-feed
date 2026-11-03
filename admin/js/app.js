@@ -1,9 +1,9 @@
 // Live Wallpapers 4K - admin panel. Plain ES modules, no build step; served from the wallpaper site (GitHub Pages)
 // at /admin/. Reads feed.json + admin.json, edits admin.json, publishes through the GitHub API.
-import { GitHub } from "./github.js?v=23a2a00d47";
-import { Model, KINDS, KIND_LABEL, TAGS, DEFAULT_CONFIG, DEFAULT_BANNERS, ORDER_LISTS } from "./model.js?v=23a2a00d47";
-import { processPhoto, processVideo, posterFromUrl, processCover, rethumb, loadSource, MAX_VIDEO_MB } from "./media.js?v=23a2a00d47";
-import { LOGIN_FILE, lock, unlock, fetchLogin } from "./login.js?v=23a2a00d47";
+import { GitHub } from "./github.js?v=a90af7bdef";
+import { Model, KINDS, KIND_LABEL, TAGS, DEFAULT_CONFIG, DEFAULT_BANNERS, ORDER_LISTS } from "./model.js?v=a90af7bdef";
+import { processPhoto, processVideo, posterFromUrl, processCover, rethumb, loadSource, MAX_VIDEO_MB } from "./media.js?v=a90af7bdef";
+import { LOGIN_FILE, lock, unlock, fetchLogin } from "./login.js?v=a90af7bdef";
 
 const STORE_KEY = "lw4k_admin";
 const DEFAULT_REPO = "manavbavadiya/lumawalls-feed";
@@ -1548,14 +1548,6 @@ function pagePremium(root) {
   const num = (k, label, min, max, hint) => h("label", { class: "field" }, h("span", {}, label),
     h("input", { type: "number", min, max, value: c[k], oninput: (e) => { const n = Math.round(+e.target.value); if (!Number.isNaN(n)) setC(k, Math.max(min, Math.min(max, n))); } }),
     hint ? h("div", { class: "hint" }, hint) : null);
-  const unitField = (k, label) => {
-    const warn = h("div", { class: "hint", style: { color: "#ffb4ad", minHeight: "16px" } });
-    const check = (v) => { warn.textContent = v && !/^ca-app-pub-\d{16}\/\d{10}$/.test(v) ? "That does not look like an ad unit ID (ca-app-pub-0000000000000000/0000000000). Phones ignore it." : ""; };
-    const input = h("input", { type: "text", placeholder: "ca-app-pub-0000000000000000/0000000000", value: c[k] || "", spellcheck: "false",
-      oninput: (e) => { const v = e.target.value.trim(); check(v); setC(k, v); } });
-    check(c[k] || "");
-    return h("label", { class: "field" }, h("span", {}, label), input, warn);
-  };
   const tog = (k, label) => h("label", { class: "check", style: { margin: "6px 0 12px", display: "flex" } },
     h("input", { type: "checkbox", checked: !!c[k], onchange: (e) => setC(k, e.target.checked) }), label);
   const preview = h("div", { class: "phone" });
@@ -1577,18 +1569,11 @@ function pagePremium(root) {
         text("lifetimePrice", "One-time price"),
         num("trialDays", "Free trial days (0 = no trial)", 0, 30)),
       h("div", { class: "card" }, h("h2", {}, "Ads"),
-        tog("adsEnabled", "Show ads to free users"),
+        h("p", {}, "Ads (app open, full-screen on Back / after Set / after Download, rewarded videos, banners), their AdMob unit IDs and how often they show are managed in the ads dashboard, like the other apps."),
+        h("div", { class: "row", style: { margin: "4px 0 14px" } },
+          h("a", { class: "btn primary", href: "https://ads-config.braincuber.workers.dev/#app/hd.uhd.live.wallpapers.topwallpapers1", target: "_blank", rel: "noopener" }, "Open the ads dashboard")),
         tog("rewardedEnabled", "Also let free users unlock one Pro wallpaper by watching an ad (off: only people who bought Pro can use Pro wallpapers)"),
-        tog("interstitialAfterSet", "Full-screen ad after a wallpaper is set"),
-        num("interstitialEveryPreviews", "Full-screen ad on every Nth wallpaper opened (0 = never)", 0, 50),
-        tog("interstitialAfterDownload", "Full-screen ad after a wallpaper is downloaded"),
-        num("interstitialMinGapSec", "At most one full-screen ad every … seconds", 30, 3600, "Google recommends not showing full-screen ads too often; 60 s or more."),
-        h("p", { class: "hint" }, "Pro users never see ads.")),
-      h("div", { class: "card" }, h("h2", {}, "AdMob ad unit IDs"),
-        h("p", { class: "hint" }, "From AdMob › Apps › Ad units. Leave empty to use the IDs built into the app (Google's test ads in this build). Phones use new IDs from their next ad."),
-        unitField("interstitialUnitId", "Full-screen (interstitial) ad unit ID"),
-        unitField("rewardedUnitId", "Rewarded ad unit ID (Watch an ad to unlock)"),
-        h("p", { class: "hint" }, "The AdMob App ID (ca-app-pub-…~…) cannot be changed from here: Android reads it from the app itself. Put it in frontend/local.properties as ",
+        h("p", { class: "hint" }, "Pro users never see ads. The AdMob App ID (ca-app-pub-…~…) is built into the app: put it in frontend/local.properties as ",
           h("code", {}, "admob.appId=ca-app-pub-…~…"), " before building the release."))),
     h("div", { class: "card" }, h("h2", {}, "Preview"), preview,
       h("p", { class: "hint", style: { marginTop: "14px" } }, "Which wallpapers are Pro: set it per category on the Categories page, or per wallpaper on the Wallpapers page."),
