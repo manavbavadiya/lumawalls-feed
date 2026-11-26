@@ -21,7 +21,7 @@
 </head>
 <body>
 <h1>Privacy Policy</h1>
-<p class="meta">Live Wallpapers 4K (Android app <code>hd.uhd.live.wallpapers.topwallpapers1</code>) · Effective 3 November 2026</p>
+<p class="meta">Live Wallpapers 4K (Android app <code>hd.uhd.live.wallpapers.topwallpapers1</code>) · Effective 24 November 2026</p>
 
 <p>This policy explains what information the Live Wallpapers 4K app ("the app", "we") handles, why, and the choices you
 have. In short: the app has no user accounts, we do not run a server that collects your data, and everything you save
@@ -59,13 +59,14 @@ Wikimedia Commons.</p>
     Policy</a> and the GitHub Privacy Statement linked above.</li>
   <li><b>Ad settings.</b> The app downloads its ad settings (which ads may show and how often) from a small
     configuration service hosted on Cloudflare (workers.dev). Like any web server, it receives your IP address and basic
-    request information. See the <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare Privacy Policy</a>.</li>
+    request information; the app also sends its version and a random ID created for this installation, so the
+    service can tell which app versions are in use. The ID is not linked to you or your Google account. See the <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare Privacy Policy</a>.</li>
   <li><b>Push messages.</b> To send occasional news, such as new wallpapers, the app registers with Google's Firebase
     Cloud Messaging, which gives this installation a random token. The app also joins general groups (all users, your
     country and language as set on your phone, and the app version) so messages can be relevant. No account or contact
     details are involved. See <a href="https://firebase.google.com/support/privacy">Privacy and Security in Firebase</a>.</li>
-  <li><b>Advertising.</b> The free version shows ads from Google AdMob (banners, full-screen ads and, if you choose,
-    reward videos that remove ads for a while). To show ads, measure them and prevent fraud,
+  <li><b>Advertising.</b> The free version shows ads from Google AdMob (banners, full-screen ads, an ad in the
+    "Close the app?" dialog and, where offered, short videos you choose to watch to open a feature). To show ads, measure them and prevent fraud,
     Google may collect device identifiers (such as the Android advertising ID), your IP address, approximate location
     derived from it, and how you interact with ads. Ads are <b>not personalised</b> unless you turn on "Personalised
     ads" yourself; it is off by default. Where the law requires it (for example in the EEA and UK), Google's consent
@@ -74,9 +75,17 @@ Wikimedia Commons.</p>
   <li><b>Purchases.</b> Pro is sold through Google Play Billing. Google processes the payment; the app only learns
     whether your Google account owns Pro. We never see your card or payment details. See the
     <a href="https://policies.google.com/privacy">Google Privacy Policy</a>.</li>
+  <li><b>Ad statistics.</b> The app sends counts about its ads (for example an ad was requested, loaded, shown,
+    tapped or closed, and the ad revenue Google reports) to Google Analytics for Firebase, so we can see which ads
+    work. Firebase links these counts to a random app-instance ID and receives your IP address; no name, e-mail or
+    content you save is sent. See <a href="https://firebase.google.com/support/privacy">Privacy and Security in
+    Firebase</a>.</li>
+  <li><b>Updates.</b> When the app was installed from Google Play, it asks Google Play whether a newer version is
+    available and can download it for you. See the <a href="https://policies.google.com/privacy">Google Privacy
+    Policy</a>.</li>
 </ul>
-<p>We do not sell your information, do not use analytics or crash-reporting services, and do not share information
-with anyone else.</p>
+<p>We do not sell your information, do not use crash-reporting services, and do not share information with anyone
+else.</p>
 
 <h2>Permissions</h2>
 <ul>
